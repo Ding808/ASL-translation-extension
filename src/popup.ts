@@ -4,12 +4,9 @@ import { RecordingState, CommandResponse } from './types';
 import { config } from './config';
 
 // DOM Elements
-const startButton = document.getElementById('startRecording') as HTMLButtonElement;
-const stopButton = document.getElementById('stopRecording') as HTMLButtonElement;
+const startButton = document.getElementById('startInterpreting') as HTMLButtonElement;
 const videoPreview = document.getElementById('videoPreview') as HTMLVideoElement;
 const statusElement = document.getElementById('status') as HTMLDivElement;
-
-// add ai result area
 const aiResultElement = document.getElementById('aiResult') as HTMLDivElement;
 
 // Track stream and recorder state
@@ -17,18 +14,19 @@ let currentStream: MediaStream | null = null;
 let mediaRecorder: MediaRecorder | null = null;
 // Timer ID, used to call the AI ​​screenshot function every second
 let aiInterval: number | undefined;
+let isRecording = false;
 
 // Initialize UI state
 document.addEventListener('DOMContentLoaded', async () => {
   // Check current recording state
   chrome.runtime.sendMessage({ action: 'getRecordingState' }, (response: RecordingState) => {
-    updateUIState(response.isRecording);
-    
-    // If already recording, start a new preview stream
-    if (response.isRecording) {
-      startScreenCapture();
-    } else {
-      statusElement.textContent = 'Click "Start Recording" to begin';
+    if (response) {
+      updateUIState(response.isRecording);
+      
+      // If already recording, start a new preview stream
+      if (response.isRecording) {
+        startScreenCapture();
+      }
     }
   });
 });
@@ -36,6 +34,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Start recording
 startButton.addEventListener('click', async () => {
   try {
+    if (isRecording) {
+      // If already recording, stop
+      stopScreenCaptureAndRecording();
+      return;
+    }
+    
     // Start screen capture for preview
     const stream = await startScreenCapture();
     if (!stream) {
@@ -55,7 +59,7 @@ startButton.addEventListener('click', async () => {
         statusElement.textContent = 'Recording started';
         statusElement.classList.add('recording');
         
-        // Start the media recorder (everysecond collect the data)
+        // Start the media recorder (every second collect the data)
         if (mediaRecorder) {
           mediaRecorder.start(1000);
         }
@@ -73,42 +77,20 @@ startButton.addEventListener('click', async () => {
   }
 });
 
-// Stop recording
-stopButton.addEventListener('click', () => {
-  // Stop AI screenshot timer
-  if (aiInterval) {
-    clearInterval(aiInterval);
-    aiInterval = undefined;
-  }
-
-  // Stop the media recorder first
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-    // The onstop event will notify the background
-  } else {
-    chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
-      if (response && response.success) {
-        updateUIState(false);
-        statusElement.textContent = 'Recording stopped';
-        statusElement.classList.remove('recording');
-        stopScreenCapture();
-      } else {
-        statusElement.textContent = response?.error || 'Failed to stop recording';
-      }
-    });
-  }
-});
-
 // Update UI based on recording state
-function updateUIState(isRecording: boolean): void {
-  startButton.disabled = isRecording;
-  stopButton.disabled = !isRecording;
+function updateUIState(recording: boolean): void {
+  isRecording = recording;
   
-  if (isRecording) {
-    statusElement.textContent = 'Recording in progress...';
+  if (recording) {
+    startButton.textContent = 'STOP INTERPRETING';
+    statusElement.classList.remove('hidden');
+    statusElement.textContent = 'Interpreting in progress...';
     statusElement.classList.add('recording');
+    aiResultElement.classList.remove('hidden');
   } else {
-    statusElement.classList.remove('recording');
+    startButton.textContent = 'START INTERPRETING';
+    statusElement.classList.add('hidden');
+    aiResultElement.classList.add('hidden');
   }
 }
 
@@ -132,7 +114,7 @@ function setupMediaRecorder(stream: MediaStream): void {
       chrome.runtime.sendMessage({ action: 'completeRecording' }, (response) => {
         if (response && response.success) {
           updateUIState(false);
-          statusElement.textContent = 'Recording completed';
+          statusElement.textContent = 'Interpreting completed';
           statusElement.classList.remove('recording');
         }
       });
@@ -165,10 +147,7 @@ async function startScreenCapture(): Promise<MediaStream | null> {
     currentStream = stream;
     
     stream.getVideoTracks()[0].addEventListener('ended', () => {
-      stopScreenCapture();
-      if (!stopButton.disabled) {
-        stopButton.click();
-      }
+      stopScreenCaptureAndRecording();
     });
     
     return stream;
@@ -179,7 +158,7 @@ async function startScreenCapture(): Promise<MediaStream | null> {
   }
 }
 
-// Stop screen capture and clean ai timer
+// Stop screen capture
 function stopScreenCapture(): void {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
@@ -198,6 +177,31 @@ function stopScreenCapture(): void {
   }
 }
 
+// Stop screen capture and recording
+function stopScreenCaptureAndRecording(): void {
+  // Stop AI screenshot timer
+  if (aiInterval) {
+    clearInterval(aiInterval);
+    aiInterval = undefined;
+  }
+
+  // Stop the media recorder first
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  } else {
+    chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
+      if (response && response.success) {
+        updateUIState(false);
+        statusElement.textContent = 'Interpreting stopped';
+        statusElement.classList.remove('recording');
+        stopScreenCapture();
+      } else {
+        statusElement.textContent = response?.error || 'Failed to stop recording';
+      }
+    });
+  }
+}
+
 /**
 * Called once per second: Take a screenshot from videoPreview and call the Roboflow AI API,
 * Extract the predicted class value from the returned data and update the plugin interface display
@@ -208,7 +212,7 @@ async function captureScreenshotAndCallAPI(): Promise<void> {
     return;
   }
   
-//Use canvas to get the current frame screenshot
+  // Use canvas to get the current frame screenshot
   const canvas = document.createElement('canvas');
   canvas.width = videoPreview.videoWidth;
   canvas.height = videoPreview.videoHeight;
@@ -219,7 +223,7 @@ async function captureScreenshotAndCallAPI(): Promise<void> {
   }
   ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
   
-// Get the image data in Base64 format (remove the "data:image/png;base64," prefix)
+  // Get the image data in Base64 format (remove the "data:image/png;base64," prefix)
   const dataUrl = canvas.toDataURL('image/png');
   const base64Data = dataUrl.split(',')[1];
 

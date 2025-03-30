@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Screen Recorder Extension",
+  "name": "SignScribe",
   "version": "1.0.0",
-  "description": "Records screen and sends data to a server",
+  "description": "ASL Language Interpreter",
   "permissions": [
     "desktopCapture",
     "tabs",
@@ -35,5 +35,8 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"]
     }
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
 }
