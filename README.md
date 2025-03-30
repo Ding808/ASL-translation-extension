@@ -16,7 +16,20 @@ A TypeScript browser extension that records the screen and sends the recording d
    pnpm install
    ```
 
-2. Generate extension icons:
+2. Set up environment variables: Create a `.env` file in the root directory:
+
+
+   You can get your Server URL and API Key from [asl-recognition-uhnrr/11](https://universe.roboflow.com/asl-recognition/asl-recognition-uhnrr/model/11?webcam=true) at Code Snippets's javascript code
+   
+   Replace the values above with your API and URL
+   ```
+   ROBOFLOW_API_URL="your_url_here"
+   ROBOFLOW_API_KEY="your_api_key_here"
+   ```
+
+
+
+3. Generate extension icons:
    - Open `icon-generator.html` in a browser
    - Right-click on each canvas and select "Save image as..."
    - Save the icons to the `public/icons` directory as:
@@ -24,12 +37,12 @@ A TypeScript browser extension that records the screen and sends the recording d
      - `icon48.png` (48x48)
      - `icon128.png` (128x128)
 
-3. Build the extension:
+4. Build the extension:
    ```
    pnpm run build
    ```
 
-4. For development with auto-rebuild:
+5. For development with auto-rebuild:
    ```
    pnpm run dev
    ```
@@ -67,4 +80,4 @@ The server should accept POST requests with form data containing a video file na
 
 ## License
 
-ISC
+MIT
