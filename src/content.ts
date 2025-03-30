@@ -1,72 +1,213 @@
-// This content script can be used to inject UI elements or communicate with the page
-// It runs in the context of the web page
+let contentIsRecording = false;
+let captureStream: MediaStream | null = null;
+let videoElement: HTMLVideoElement | null = null;
+let captionElement: HTMLDivElement | null = null;
 
-// Listen for messages from the background script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Handle any messages from background script if needed
-  if (message.action === 'recordingStatus') {
-    console.log('Recording status:', message.isRecording ? 'active' : 'inactive');
-    
-    // You could add UI indicators on the page to show recording status
-    if (message.isRecording) {
-      showRecordingIndicator();
-    } else {
-      removeRecordingIndicator();
-    }
+initializeContentScript();
+
+function initializeContentScript() {
+  try {
+    chrome.runtime.sendMessage({
+      action: 'contentScriptReady'
+    });
+  } catch (err) {
+    console.error('Failed to notify background script:', err);
   }
-  
-  // Always return false if you don't need to send a response asynchronously
-  return false;
-});
 
-// Function to show a recording indicator on the page
-function showRecordingIndicator(): void {
-  // Remove any existing indicator first
-  removeRecordingIndicator();
-  
-  // Create a new recording indicator
-  const indicator = document.createElement('div');
-  indicator.id = 'screen-recording-indicator';
-  indicator.style.position = 'fixed';
-  indicator.style.top = '10px';
-  indicator.style.right = '10px';
-  indicator.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
-  indicator.style.color = 'white';
-  indicator.style.padding = '5px 10px';
-  indicator.style.borderRadius = '4px';
-  indicator.style.fontFamily = 'Arial, sans-serif';
-  indicator.style.fontSize = '12px';
-  indicator.style.zIndex = '9999';
-  indicator.textContent = 'Recording';
-  
-  // Add a pulsing effect
-  indicator.style.animation = 'pulse 1.5s infinite';
-  
-  // Add the indicator to the page
-  document.body.appendChild(indicator);
-  
-  // Add the animation style
-  const style = document.createElement('style');
-  style.id = 'screen-recording-indicator-style';
-  style.textContent = `
-    @keyframes pulse {
-      0% { opacity: 0.7; }
-      50% { opacity: 1; }
-      100% { opacity: 0.7; }
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    try {
+      switch (message.action) {
+        case 'startRecording':
+          startRecording().then(() => {
+            sendResponse({ success: true });
+          }).catch(error => {
+            console.error('Error in startRecording:', error);
+            sendResponse({ success: false, error: error.message });
+          });
+          break;
+
+        case 'stopRecording':
+          stopRecording();
+          sendResponse({ success: true });
+          break;
+
+        case 'showCaptions':
+          toggleCaptions(message.show);
+          sendResponse({ success: true });
+          break;
+
+        case 'updateCaptions':
+          updateCaptionText(message.text);
+          sendResponse({ success: true });
+          break;
+        
+        case 'pingContentScript':
+          sendResponse({ success: true, message: 'Content script is active' });
+          break;
+
+        case 'error':
+          console.error('Error from background script:', message.error);
+          sendResponse({ success: true });
+          break;
+
+        default:
+          sendResponse({ success: false, error: 'Unknown action' });
+      }
+    } catch (error) {
+      sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
-  `;
-  document.head.appendChild(style);
+    
+    return true;
+  });
 }
 
-// Function to remove the recording indicator
-function removeRecordingIndicator(): void {
-  const indicator = document.getElementById('screen-recording-indicator');
-  if (indicator) {
-    indicator.remove();
+async function startRecording() {
+  try {
+    if (contentIsRecording) return;
+
+    captureStream = await navigator.mediaDevices.getDisplayMedia({ 
+      video: true,
+      audio: false 
+    });
+
+    videoElement = document.createElement('video');
+    videoElement.srcObject = captureStream;
+    videoElement.style.display = 'none';
+    document.body.appendChild(videoElement);
+    
+    await videoElement.play();
+    
+    contentIsRecording = true;
+    
+    try {
+      chrome.runtime.sendMessage({
+        action: 'recordingStarted'
+      });
+    } catch (err) {
+      console.error('Failed to notify background of recording start:', err);
+    }
+    
+    captureAndSendFrames();
+
+    captureStream.getVideoTracks()[0].onended = () => {
+      stopRecording();
+    };
+
+    toggleCaptions(true);
+
+  } catch (error) {
+    console.error('Failed to start recording:', error);
+    stopRecording();
+    throw error;
+  }
+}
+
+function stopRecording() {
+  contentIsRecording = false;
+  
+  if (captureStream) {
+    captureStream.getTracks().forEach(track => track.stop());
+    captureStream = null;
+  }
+
+  if (videoElement) {
+    videoElement.pause();
+    if (videoElement.srcObject) {
+      videoElement.srcObject = null;
+    }
+    videoElement.remove();
+    videoElement = null;
+  }
+
+  try {
+    chrome.runtime.sendMessage({
+      action: 'recordingStopped'
+    });
+  } catch (err) {
+    console.error('Failed to notify background of recording stop:', err);
   }
   
-  const style = document.getElementById('screen-recording-indicator-style');
-  if (style) {
-    style.remove();
+  toggleCaptions(false);
+}
+
+function captureAndSendFrames() {
+  if (!contentIsRecording || !videoElement) {
+    return;
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+      canvas.width = videoElement.videoWidth;
+      canvas.height = videoElement.videoHeight;
+      
+      context?.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+      
+      try {
+        const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+        
+        chrome.runtime.sendMessage({
+          action: 'processFrame',
+          frame: base64Data
+        });
+      } catch (error) {
+        console.error('Error capturing frame:', error);
+      }
+    }
+
+    if (contentIsRecording) {
+      setTimeout(() => captureAndSendFrames(), 1000);
+    }
+  } catch (error) {
+    console.error('Error in captureAndSendFrames:', error);
+    if (contentIsRecording) {
+      setTimeout(() => captureAndSendFrames(), 1000);
+    }
+  }
+}
+
+function toggleCaptions(show: boolean) {
+  const existingCaption = document.getElementById('aslInterpreterCaptions');
+  if (existingCaption) existingCaption.remove();
+  
+  if (show) {
+    captionElement = document.createElement('div');
+    captionElement.id = 'aslInterpreterCaptions';
+    captionElement.style.cssText = `
+      position: fixed;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-family: Arial, sans-serif;
+      font-size: 20px;
+      z-index: 10000;
+      transition: opacity 0.3s;
+    `;
+    captionElement.textContent = 'ASL Interpreter ready...';
+    document.body.appendChild(captionElement);
+  } else {
+    captionElement = null;
+  }
+}
+
+function updateCaptionText(text: string) {
+  const caption = document.getElementById('aslInterpreterCaptions');
+  if (caption) {
+    caption.textContent = text;
+    caption.style.background = 'rgba(0, 128, 255, 0.8)';
+    setTimeout(() => {
+      if (caption) {
+        caption.style.background = 'rgba(0, 0, 0, 0.7)';
+      }
+    }, 300);
+  } else {
+    toggleCaptions(true);
+    updateCaptionText(text);
   }
 }
