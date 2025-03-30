@@ -75,7 +75,7 @@ input[type="range"]::-webkit-slider-thumb {
 .title-signscribe {
   font-family: 'Pacifico', cursive;
   font-weight: 400;
-  font-size: 24px;
+  font-size: 36px;
   line-height: 100%;
   letter-spacing: 16%;
   color: #083024;
@@ -84,8 +84,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 .subtitle {
   font-family: 'Josefin Sans', sans-serif;
-  font-weight: 400;
-  font-size: 16px;
+  font-weight: 500;
+  font-size: 18px;
   line-height: 100%;
   color: #083024;
   text-align: left;
@@ -112,22 +112,6 @@ input[type="range"]::-webkit-slider-thumb {
 
 .start-button:active {
   transform: scale(0.95);
-}
-
-/* Animation for slide in bottom */
-@keyframes slideInBottom {
-  from {
-    transform: translateY(30px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.slide-in-bottom {
-  animation: slideInBottom 0.5s ease-out forwards;
 }
 
 /* Hide elements */
