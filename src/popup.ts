@@ -1,5 +1,7 @@
 // Import shared types
 import { RecordingState, CommandResponse } from './types';
+// Import config for API credentials
+import { config } from './config';
 
 // DOM Elements
 const startButton = document.getElementById('startRecording') as HTMLButtonElement;
@@ -222,8 +224,8 @@ async function captureScreenshotAndCallAPI(): Promise<void> {
   const base64Data = dataUrl.split(',')[1];
 
   try {
-    const apiUrl = "";
-    const apiKey = "";
+    const apiUrl = config.ROBOFLOW_API_URL;
+    const apiKey = config.ROBOFLOW_API_KEY;
     const params = new URLSearchParams({ api_key: apiKey });
     
     const response = await fetch(`${apiUrl}?${params.toString()}`, {
