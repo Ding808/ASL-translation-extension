@@ -37,7 +37,7 @@
 }
 
 input:checked + .slider {
-  background-color: #083024;
+  background-color: #72A8B6;
 }
 
 input:checked + .slider:before {
@@ -55,8 +55,8 @@ input:checked + .slider:before {
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 5px;
-  background: #083024;
+  height: 10px;
+  background: #72A8B6;
   border-radius: 5px;
   outline: none;
 }
@@ -64,9 +64,9 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
-  background: #083024;
+  width: 20px;
+  height: 20px;
+  background: #72A8B6;
   border-radius: 50%;
   cursor: pointer;
 }
@@ -106,11 +106,25 @@ input[type="range"]::-webkit-slider-thumb {
   transition: all 0.3s ease-out;
 }
 
-.start-button:hover {
+.stop-button {
+  width: 157px;
+  height: 71px;
+  background-color: #875757;
+  border: 3px solid #761111;
+  border-radius: 86px;
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease-out;
+}
+
+.start-button:hover, .stop-button:hover {
   transform: scale(1.05);
 }
 
-.start-button:active {
+.start-button:active, .stop-button:active {
   transform: scale(0.95);
 }
 

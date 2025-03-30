@@ -73,8 +73,12 @@ function updateUI(recording: boolean) {
   
   if (recording) {
     aiResultElement.classList.remove('hidden');
+    startButton.classList.add('stop-button');
+    startButton.classList.remove('start-button');
   } else {
     aiResultElement.classList.add('hidden');
+    startButton.classList.add('start-button');
+    startButton.classList.remove('stop-button');
   }
 }
 
