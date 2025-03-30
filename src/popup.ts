@@ -7,9 +7,14 @@ const stopButton = document.getElementById('stopRecording') as HTMLButtonElement
 const videoPreview = document.getElementById('videoPreview') as HTMLVideoElement;
 const statusElement = document.getElementById('status') as HTMLDivElement;
 
+// add ai result area
+const aiResultElement = document.getElementById('aiResult') as HTMLDivElement;
+
 // Track stream and recorder state
 let currentStream: MediaStream | null = null;
 let mediaRecorder: MediaRecorder | null = null;
+// Timer ID, used to call the AI ​​screenshot function every second
+let aiInterval: number | undefined;
 
 // Initialize UI state
 document.addEventListener('DOMContentLoaded', async () => {
@@ -48,10 +53,13 @@ startButton.addEventListener('click', async () => {
         statusElement.textContent = 'Recording started';
         statusElement.classList.add('recording');
         
-        // Start the media recorder
+        // Start the media recorder (everysecond collect the data)
         if (mediaRecorder) {
-          mediaRecorder.start(1000); // Collect data every second
+          mediaRecorder.start(1000);
         }
+        
+        // Take a screenshot every 1 second and call the AI ​​API
+        aiInterval = window.setInterval(captureScreenshotAndCallAPI, 1000);
       } else {
         stopScreenCapture();
         statusElement.textContent = response?.error || 'Failed to start recording';
@@ -65,12 +73,17 @@ startButton.addEventListener('click', async () => {
 
 // Stop recording
 stopButton.addEventListener('click', () => {
+  // Stop AI screenshot timer
+  if (aiInterval) {
+    clearInterval(aiInterval);
+    aiInterval = undefined;
+  }
+
   // Stop the media recorder first
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
-    // We'll notify the background script in the onstop handler
+    // The onstop event will notify the background
   } else {
-    // If no media recorder, just update state
     chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
       if (response && response.success) {
         updateUIState(false);
@@ -100,15 +113,12 @@ function updateUIState(isRecording: boolean): void {
 // Set up media recorder
 function setupMediaRecorder(stream: MediaStream): void {
   try {
-    // Create media recorder
     mediaRecorder = new MediaRecorder(stream, {
       mimeType: 'video/webm;codecs=vp9'
     });
     
-    // Set up event handlers
     mediaRecorder.ondataavailable = (event: BlobEvent) => {
       if (event.data && event.data.size > 0) {
-        // Send data to background script
         chrome.runtime.sendMessage({ 
           action: 'addRecordingData', 
           data: event.data 
@@ -117,7 +127,6 @@ function setupMediaRecorder(stream: MediaStream): void {
     };
     
     mediaRecorder.onstop = () => {
-      // Notify background script that recording is complete
       chrome.runtime.sendMessage({ action: 'completeRecording' }, (response) => {
         if (response && response.success) {
           updateUIState(false);
@@ -126,7 +135,6 @@ function setupMediaRecorder(stream: MediaStream): void {
         }
       });
       
-      // Clean up
       stopScreenCapture();
     };
     
@@ -144,7 +152,6 @@ function setupMediaRecorder(stream: MediaStream): void {
 // Start screen capture for preview
 async function startScreenCapture(): Promise<MediaStream | null> {
   try {
-    // Request user to select a screen/window to share
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         cursor: 'always' as any
@@ -152,14 +159,11 @@ async function startScreenCapture(): Promise<MediaStream | null> {
       audio: false
     });
     
-    // Display the stream in the video element
     videoPreview.srcObject = stream;
     currentStream = stream;
     
-    // Handle when user stops sharing via the browser UI
     stream.getVideoTracks()[0].addEventListener('ended', () => {
       stopScreenCapture();
-      // If we're recording, stop that too
       if (!stopButton.disabled) {
         stopButton.click();
       }
@@ -173,18 +177,75 @@ async function startScreenCapture(): Promise<MediaStream | null> {
   }
 }
 
-// Stop screen capture
+// Stop screen capture and clean ai timer
 function stopScreenCapture(): void {
-  // Stop media recorder if running
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
   }
   mediaRecorder = null;
   
-  // Stop all tracks in the stream
   if (currentStream) {
     currentStream.getTracks().forEach(track => track.stop());
     currentStream = null;
   }
   videoPreview.srcObject = null;
+
+  if (aiInterval) {
+    clearInterval(aiInterval);
+    aiInterval = undefined;
+  }
+}
+
+/**
+* Called once per second: Take a screenshot from videoPreview and call the Roboflow AI API,
+* Extract the predicted class value from the returned data and update the plugin interface display
+ */
+async function captureScreenshotAndCallAPI(): Promise<void> {
+  if (!videoPreview || videoPreview.videoWidth === 0 || videoPreview.videoHeight === 0) {
+    console.error('Video not ready for screenshot');
+    return;
+  }
+  
+//Use canvas to get the current frame screenshot
+  const canvas = document.createElement('canvas');
+  canvas.width = videoPreview.videoWidth;
+  canvas.height = videoPreview.videoHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.error('Failed to get canvas context');
+    return;
+  }
+  ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+  
+// Get the image data in Base64 format (remove the "data:image/png;base64," prefix)
+  const dataUrl = canvas.toDataURL('image/png');
+  const base64Data = dataUrl.split(',')[1];
+
+  try {
+    const apiUrl = "";
+    const apiKey = "";
+    const params = new URLSearchParams({ api_key: apiKey });
+    
+    const response = await fetch(`${apiUrl}?${params.toString()}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: base64Data
+    });
+    
+    const jsonData = await response.json();
+    // Extract the class value of the first predicted object in the prediction result according to the return structure of Roboflow API
+    let classValue = "";
+    if (jsonData && jsonData.predictions && jsonData.predictions.length > 0) {
+      classValue = jsonData.predictions[0].class;
+    } else {
+      classValue = "No prediction";
+    }
+    
+    // Update ai result in the screen
+    aiResultElement.textContent = `AI: ${classValue}`;
+  } catch (error) {
+    console.error('Error calling AI API', error);
+  }
 }

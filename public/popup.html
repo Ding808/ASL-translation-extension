@@ -43,11 +43,21 @@
       border-radius: 4px;
       border: 1px solid #ccc;
     }
+    /* AI css */
+    #aiResult {
+      margin-top: 10px;
+      padding: 5px;
+      border: 1px solid #0078d7;
+      border-radius: 4px;
+      text-align: center;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
   <h2>Screen Recorder</h2>
   <video id="videoPreview" autoplay muted></video>
+  <div id="aiResult">AI: No data</div>
   <button id="startRecording">Start Recording</button>
   <button id="stopRecording" disabled>Stop Recording</button>
   <div id="status" class="status"></div>
